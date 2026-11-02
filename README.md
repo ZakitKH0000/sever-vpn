@@ -120,8 +120,10 @@ IPA для iPhone (arm64, iOS 17+). Установка и работа на фи
 ```sh
 npm test
 swift scripts/check_javascriptcore.swift
+node scripts/prepare_catalog.cjs
 python3 scripts/prepare_dependencies.py
 xcodegen generate
+python3 scripts/run_simulator_tests.py
 xcodebuild archive -project Sever.xcodeproj -scheme Sever \
   -configuration Release -destination 'generic/platform=iOS' \
   -archivePath build/Sever.xcarchive \
