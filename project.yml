@@ -9,8 +9,8 @@ settings:
     SWIFT_VERSION: '5.0'
     IPHONEOS_DEPLOYMENT_TARGET: '17.0'
     TARGETED_DEVICE_FAMILY: '1,2'
-    CURRENT_PROJECT_VERSION: '2'
-    MARKETING_VERSION: '0.1.1'
+    CURRENT_PROJECT_VERSION: '3'
+    MARKETING_VERSION: '0.1.2'
     CLANG_ENABLE_MODULES: YES
     CLANG_ENABLE_OBJC_ARC: YES
     ENABLE_BITCODE: NO
@@ -83,6 +83,7 @@ targets:
       path: ios/Tunnel/Xray-Info.plist
       properties:
         CFBundleDisplayName: Север — Xray
+        SeverTunnelEngine: xray
         CFBundleShortVersionString: '$(MARKETING_VERSION)'
         CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
         NSExtension:
@@ -118,6 +119,7 @@ targets:
       path: ios/Tunnel/OpenVPN-Info.plist
       properties:
         CFBundleDisplayName: Север — OpenVPN
+        SeverTunnelEngine: openvpn
         CFBundleShortVersionString: '$(MARKETING_VERSION)'
         CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
         NSExtension:
@@ -147,3 +149,5 @@ targets:
         BUNDLE_LOADER: '$(TEST_HOST)'
     dependencies:
       - target: Sever
+      - package: OpenVPNAdapter
+        product: OpenVPNAdapter

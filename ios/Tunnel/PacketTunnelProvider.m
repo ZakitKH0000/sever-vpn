@@ -29,6 +29,7 @@ static NSError *SeverTunnelError(NSString *message) {
 @property(nonatomic) BOOL hasConnected;
 @property(nonatomic) BOOL xrayRunning;
 @property(nonatomic, copy) dispatch_block_t deadline;
+@property(nonatomic, strong) NSError *lastAttemptError;
 @end
 
 @implementation PacketTunnelProvider
@@ -55,7 +56,7 @@ static NSError *SeverTunnelError(NSString *message) {
             completionHandler:(void (^)(NSError *))completionHandler {
     dispatch_async(self.stateQueue, ^{
         self.startHandler = completionHandler;
-        self.stopping = NO; self.hasConnected = NO; self.candidateIndex = 0;
+        self.stopping = NO; self.hasConnected = NO; self.candidateIndex = 0; self.lastAttemptError = nil;
         NETunnelProviderProtocol *configuration = (NETunnelProviderProtocol *)self.protocolConfiguration;
         NSData *reference = configuration.passwordReference;
         if (!reference) { [self finishStart:SeverTunnelError(@"Нет ссылки на конфигурацию")]; return; }
@@ -65,7 +66,7 @@ static NSError *SeverTunnelError(NSString *message) {
         CFTypeRef result = NULL;
         OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
         if (status != errSecSuccess || !result) {
-            [self finishStart:SeverTunnelError(@"Не удалось прочитать конфигурацию из Keychain. Проверьте подпись")]; return;
+            [self finishStart:SeverTunnelError([NSString stringWithFormat:@"VPN-расширение не получило конфигурацию из Keychain (код %d). При подписи приложению и расширению нужна общая группа Keychain", (int)status])]; return;
         }
         NSData *data = CFBridgingRelease(result);
         if (![data isKindOfClass:NSData.class] || data.length > 512 * 1024) {
@@ -160,7 +161,10 @@ static NSError *SeverTunnelError(NSString *message) {
     __weak typeof(self) weakSelf = self;
     dispatch_block_t block = dispatch_block_create(0, ^{
         typeof(self) self = weakSelf;
-        if (self && !self.stopping && self.adapter == adapter) [self startNextOpenVPN];
+        if (self && !self.stopping && self.adapter == adapter) {
+            self.lastAttemptError = SeverTunnelError(@"OpenVPN: сервер не завершил подключение за 30 секунд. Возможны недоступность сервера или фильтрация соединения");
+            [self startNextOpenVPN];
+        }
     });
     self.deadline = block;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), self.stateQueue, block);
@@ -172,7 +176,9 @@ static NSError *SeverTunnelError(NSString *message) {
     self.adapter.delegate = nil;
     [self.adapter disconnect]; self.adapter = nil;
     if (self.candidateIndex >= self.candidates.count) {
-        if (!self.hasConnected) { [self finishStart:SeverTunnelError(@"Сохранённые серверы недоступны. Обновите каталог")]; return; }
+        if (!self.hasConnected) {
+            [self finishStart:self.lastAttemptError ?: SeverTunnelError(@"Сохранённые серверы недоступны. Обновите каталог")]; return;
+        }
         self.reasserting = YES;
         self.candidateIndex = 0;
         __weak typeof(self) weakSelf = self;
@@ -182,6 +188,7 @@ static NSError *SeverTunnelError(NSString *message) {
         return;
     }
     NSDictionary *candidate = self.candidates[self.candidateIndex++];
+    self.lastAttemptError = nil;
     NSString *raw = candidate[@"configuration"];
     OpenVPNAdapter *adapter = [[OpenVPNAdapter alloc] init];
     self.adapter = adapter; adapter.delegate = self;
@@ -192,14 +199,20 @@ static NSError *SeverTunnelError(NSString *message) {
     configuration.disableClientCert = [raw rangeOfString:@"<cert>" options:NSCaseInsensitiveSearch].location == NSNotFound;
     NSError *error = nil;
     OpenVPNConfigurationEvaluation *evaluation = [adapter applyConfiguration:configuration error:&error];
-    if (error || !evaluation) { [self startNextOpenVPN]; return; }
+    if (error || !evaluation) {
+        self.lastAttemptError = SeverTunnelError([NSString stringWithFormat:@"OpenVPN отклонил конфигурацию до подключения (код %ld)", (long)error.code]);
+        [self startNextOpenVPN]; return;
+    }
     if (!evaluation.autologin) {
         if (![candidate[@"username"] isKindOfClass:NSString.class] || ![candidate[@"password"] isKindOfClass:NSString.class]) {
             [self finishStart:SeverTunnelError(@"Профиль требует логин и пароль. В этой версии поддержана авторизация каталога VPN Gate")]; return;
         }
         OpenVPNCredentials *credentials = [[OpenVPNCredentials alloc] init];
         credentials.username = candidate[@"username"]; credentials.password = candidate[@"password"];
-        if (![adapter provideCredentials:credentials error:&error] || error) { [self startNextOpenVPN]; return; }
+        if (![adapter provideCredentials:credentials error:&error] || error) {
+            self.lastAttemptError = SeverTunnelError([NSString stringWithFormat:@"OpenVPN не принял данные авторизации (код %ld)", (long)error.code]);
+            [self startNextOpenVPN]; return;
+        }
     }
     [self armOpenVPNDeadline:adapter];
     [adapter connectUsingPacketFlow:(id<OpenVPNAdapterPacketFlow>)self.packetFlow];
@@ -219,7 +232,14 @@ static NSError *SeverTunnelError(NSString *message) {
         settings.IPv6Settings.excludedRoutes = @[];
         if (!settings.DNSSettings || settings.DNSSettings.servers.count == 0) settings.DNSSettings = [self strictNetworkSettings].DNSSettings;
         settings.DNSSettings.matchDomains = @[@""];
-        [self setTunnelNetworkSettings:settings completionHandler:completionHandler];
+        [self setTunnelNetworkSettings:settings completionHandler:^(NSError *error) {
+            if (error) {
+                dispatch_async(self.stateQueue, ^{
+                    if (adapter == self.adapter) self.lastAttemptError = SeverTunnelError([NSString stringWithFormat:@"iOS не применила сетевые настройки OpenVPN (код %ld)", (long)error.code]);
+                });
+            }
+            completionHandler(error);
+        }];
     });
 }
 
@@ -239,7 +259,13 @@ static NSError *SeverTunnelError(NSString *message) {
 }
 
 - (void)openVPNAdapter:(OpenVPNAdapter *)adapter handleError:(NSError *)error {
-    dispatch_async(self.stateQueue, ^{ if (!self.stopping && self.adapter == adapter) [self startNextOpenVPN]; });
+    dispatch_async(self.stateQueue, ^{
+        if (!self.stopping && self.adapter == adapter) {
+            // Never expose raw adapter messages: they may include configuration or credentials.
+            if (!self.lastAttemptError) self.lastAttemptError = SeverTunnelError([NSString stringWithFormat:@"Соединение OpenVPN завершилось с ошибкой адаптера (код %ld)", (long)error.code]);
+            [self startNextOpenVPN];
+        }
+    });
 }
 #endif
 

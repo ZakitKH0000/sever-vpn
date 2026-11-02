@@ -69,13 +69,15 @@ struct HomeView: View {
                                         try await vpn.connect(envelope: store.envelope(), name: store.selected?.name ?? "Север")
                                     }
                                 } catch let error as SeverError { store.message = error.localizedDescription }
-                                catch { store.message = "Не удалось запустить VPN. Проверьте разрешение iOS и подпись расширения" }
+                                catch { store.message = VPNFailure.text(error) }
                             }
                         } label: {
                             HStack { if connecting { ProgressView().tint(.black) }; Text(vpn.isActive ? "Выключить" : "Подключиться").fontWeight(.semibold) }.frame(maxWidth: .infinity).padding(.vertical, 7)
                         }
                         .buttonStyle(.borderedProminent).controlSize(.large)
                         .disabled(connecting || vpn.status == .disconnecting)
+                        if !vpn.phase.isEmpty { Text(vpn.phase).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center) }
+                        if let error = vpn.lastError { Text(error).font(.footnote).foregroundStyle(.orange).textSelection(.enabled) }
                     }.padding(22).background(SeverStyle.panel, in: RoundedRectangle(cornerRadius: 26))
 
                     HStack {
@@ -196,6 +198,11 @@ struct DiagnosticsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Последнее подключение") {
+                    Text(vpn.phase.isEmpty ? "VPN ещё не запускался" : vpn.phase).font(.footnote)
+                    if let error = vpn.lastError { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
+                    Button("Получить причину отключения iOS") { Task { await vpn.readLastError() } }
+                }
                 Section {
                     Button { Task { await store.diagnose() } } label: { Label(store.checking ? "Проверяем…" : "Проверить доступ в интернет", systemImage: "waveform.path.ecg") }.disabled(store.checking)
                     ForEach(store.checks) { check in
@@ -225,7 +232,7 @@ struct SettingsView: View {
                     SecureField("API-ключ", text: $settings.key).textInputAutocapitalization(.never).autocorrectionDisabled()
                 } header: { Text("ИИ по желанию") } footer: { Text("Без ИИ работают импорт, подключение, выбор серверов и проверка связи. Выбирайте API с подходящим бесплатным тарифом. Ключ хранится в Keychain.") }
                 Section("О приложении") {
-                    LabeledContent("Версия", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.1")
+                    LabeledContent("Версия", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.2")
                     Link("Бесплатная сеть VPN Gate", destination: URL(string: "https://www.vpngate.net/en/about_abuse.aspx")!)
                     Button("Открытый код и лицензии") { showingLicenses = true }
                     Text("Проверка поведения при обрыве на iPhone ещё требуется. Пока не считайте эту сборку гарантией отсутствия утечек.").font(.footnote).foregroundStyle(.secondary)

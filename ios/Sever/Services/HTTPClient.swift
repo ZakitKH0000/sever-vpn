@@ -28,7 +28,7 @@ enum HTTPClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
-        request.setValue("Sever/0.1.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("Sever/0.1.2", forHTTPHeaderField: "User-Agent")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let bearer { request.setValue("Bearer " + bearer, forHTTPHeaderField: "Authorization") }
         let (bytes, response) = try await session.bytes(for: request)
