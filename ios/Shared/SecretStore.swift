@@ -23,17 +23,16 @@ enum SecretStore {
             var add = base
             add[kSecValueData as String] = data
             add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else {
-                throw SeverError.message("Не удалось сохранить данные в Keychain. Проверьте подпись приложения")
-            }
+            let addStatus = SecItemAdd(add as CFDictionary, nil)
+            guard addStatus == errSecSuccess else { throw failure(addStatus) }
         } else if status != errSecSuccess {
-            throw SeverError.message("Keychain недоступен. Проверьте подпись приложения")
+            throw failure(status)
         }
         var lookup = base
         lookup[kSecReturnPersistentRef as String] = true
         var reference: CFTypeRef?
-        guard SecItemCopyMatching(lookup as CFDictionary, &reference) == errSecSuccess,
-              let value = reference as? Data else { throw SeverError.message("Не удалось получить ссылку Keychain") }
+        let referenceStatus = SecItemCopyMatching(lookup as CFDictionary, &reference)
+        guard referenceStatus == errSecSuccess, let value = reference as? Data else { throw failure(referenceStatus) }
         return value
     }
 
@@ -45,7 +44,7 @@ enum SecretStore {
         let status = SecItemCopyMatching(lookup as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess, let data = result as? Data else {
-            throw SeverError.message("Не удалось прочитать Keychain")
+            throw failure(status)
         }
         return data
     }
@@ -60,5 +59,11 @@ enum SecretStore {
             throw SeverError.message("VPN-расширение не получило доступ к конфигурации. Проверьте общую группу Keychain при подписи")
         }
         return data
+    }
+
+    private static func failure(_ status: OSStatus) -> SeverError {
+        // -34018 is errSecMissingEntitlement; do not depend on private SDK declarations.
+        let detail = status == -34018 ? "При подписи приложению не выдан доступ к хранилищу." : "iOS не разрешила операцию с хранилищем."
+        return .message("Keychain: \(detail) Код \(status).")
     }
 }

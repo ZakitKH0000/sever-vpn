@@ -44,8 +44,10 @@ for xray in (True, False):
         errors.append(f"Objective-C syntax check failed: {'Xray' if xray else 'OpenVPN'} branch")
 
 spec = yaml.safe_load((ROOT / "project.yml").read_text(encoding="utf-8"))
-assert len(spec["targets"]) == 3
-for target in spec["targets"].values():
+assert len(spec["targets"]) == 4
+for name, target in spec["targets"].items():
+    if name == "SeverTests":
+        continue
     assert target["entitlements"]["properties"]["com.apple.developer.networking.networkextension"] == ["packet-tunnel-provider"]
     assert target["entitlements"]["properties"]["keychain-access-groups"] == ["$(AppIdentifierPrefix)dev.sever.vpn.shared"]
 workflow = yaml.load((ROOT / ".github/workflows/build-ios.yml").read_text(), Loader=yaml.BaseLoader)

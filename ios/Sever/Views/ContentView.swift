@@ -111,10 +111,20 @@ struct ServersView: View {
                 Section {
                     Button { Task { await store.updateFreeServers() } } label: { Label("Обновить бесплатные серверы", systemImage: "arrow.clockwise") }.disabled(store.busy)
                     Button { Task { await store.chooseFastest() } } label: { Label("Выбрать по отклику TCP", systemImage: "bolt") }.disabled(store.busy || store.profiles.isEmpty)
-                    if let date = store.state.feedUpdatedAt { Text("Каталог обновлён: " + date.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
+                    if !store.catalogStatus.isEmpty {
+                        HStack(spacing: 10) { if store.busy { ProgressView() }; Text(store.catalogStatus).font(.footnote) }
+                    }
+                    if let date = store.state.feedUpdatedAt { Text("Список от " + date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
+                    if let error = store.catalogError {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Обновление не выполнено", systemImage: "exclamationmark.arrow.triangle.2.circlepath").font(.footnote.weight(.semibold))
+                            Text(error).font(.caption).textSelection(.enabled)
+                        }.foregroundStyle(.orange)
+                    }
+                    if let warning = store.storageWarning { Text(warning).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
                 } footer: { Text("Отклик TCP проверяет доступность порта, а не скорость или успешность VPN. Список обновляется при открытии приложения, не чаще раза в час. Выбор сервера применяется при следующем подключении.") }
                 Section("Подключения · \(store.profiles.count)") {
-                    if store.profiles.isEmpty { Text("Здесь появятся бесплатные узлы и импортированные профили").foregroundStyle(.secondary) }
+                    if store.profiles.isEmpty { Text(store.catalogError == nil ? "Список загружается. Причина возможной ошибки появится выше" : "Список недоступен. Подробности ошибки указаны выше; можно импортировать профиль").foregroundStyle(.secondary) }
                     ForEach(store.profiles) { profile in
                         Button { store.selectedID = profile.id } label: {
                             HStack(spacing: 12) {
@@ -195,8 +205,7 @@ struct DiagnosticsView: View {
                 Section {
                     Button { Task { await store.askAI(tunnelStatus: vpn.statusCode) } } label: { Label(store.aiBusy ? "Анализируем…" : "Проанализировать", systemImage: "sparkles") }.disabled(store.aiBusy || store.checks.isEmpty)
                     if !store.explanation.isEmpty { Text(store.explanation).textSelection(.enabled) }
-                } header: { Text("Помощник ИИ") }
-                  footer: { Text("Только по этой кнопке выбранному ИИ-сервису отправятся результаты проверок. Конфигурации, ключи, адреса серверов и история в отчёт не входят. Советы не применяются автоматически. Используется ваш API-ключ; бесплатность зависит от тарифа сервиса.") }
+                } header: { Text("Помощник ИИ") } footer: { Text("Только по этой кнопке выбранному ИИ-сервису отправятся результаты проверок. Конфигурации, ключи, адреса серверов и история в отчёт не входят. Советы не применяются автоматически. Используется ваш API-ключ; бесплатность зависит от тарифа сервиса.") }
             }.scrollContentBackground(.hidden).background(SeverStyle.background).navigationTitle("Проверка")
         }
     }
@@ -214,10 +223,9 @@ struct SettingsView: View {
                     TextField("HTTPS-адрес API /chat/completions", text: $settings.endpoint).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Название модели", text: $settings.model).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("API-ключ", text: $settings.key).textInputAutocapitalization(.never).autocorrectionDisabled()
-                } header: { Text("ИИ по желанию") }
-                  footer: { Text("Без ИИ работают импорт, подключение, выбор серверов и проверка связи. Выбирайте API с подходящим бесплатным тарифом. Ключ хранится в Keychain.") }
+                } header: { Text("ИИ по желанию") } footer: { Text("Без ИИ работают импорт, подключение, выбор серверов и проверка связи. Выбирайте API с подходящим бесплатным тарифом. Ключ хранится в Keychain.") }
                 Section("О приложении") {
-                    LabeledContent("Версия", value: "0.1 · первая сборка")
+                    LabeledContent("Версия", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.1")
                     Link("Бесплатная сеть VPN Gate", destination: URL(string: "https://www.vpngate.net/en/about_abuse.aspx")!)
                     Button("Открытый код и лицензии") { showingLicenses = true }
                     Text("Проверка поведения при обрыве на iPhone ещё требуется. Пока не считайте эту сборку гарантией отсутствия утечек.").font(.footnote).foregroundStyle(.secondary)

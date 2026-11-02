@@ -1,7 +1,7 @@
 {
   "name": "sever-vpn-core",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": { "test": "node --test tests/*.test.cjs" },
   "engines": { "node": ">=20" }
 }

@@ -11,19 +11,37 @@ final class AppStore: ObservableObject {
     @Published private(set) var aiBusy = false
     @Published private(set) var checks: [DiagnosticCheck] = []
     @Published private(set) var explanation = ""
+    @Published private(set) var catalogStatus = ""
+    @Published private(set) var catalogError: String?
+    @Published private(set) var storageWarning: String?
     @Published var message: String?
     private var core: ConfigurationCore?
-    private var vault: ProfileVault?
+    private var vault: ProfileStorage?
+    private var catalog: CatalogLoading?
     private var ready = false
+    private var lastRefreshAttempt: Date?
 
-    init() {
+    init(storage: ProfileStorage? = nil, bootstrap: BundledCatalog? = nil, catalog: CatalogLoading? = nil) {
+        do { core = try ConfigurationCore() }
+        catch { catalogError = UserFacingErrors.text(error) }
+        if let core { self.catalog = catalog ?? CatalogService(core: core) }
+        else { self.catalog = catalog }
         do {
-            core = try ConfigurationCore()
-            vault = try ProfileVault()
+            vault = try storage ?? ProfileVault()
             state = try vault!.load()
             selectedID = state.profiles.first?.id
             ready = true
-        } catch { message = "Не удалось открыть хранилище профилей. Данные не перезаписаны" }
+        } catch { storageWarning = "Сохранённые данные не перезаписаны. " + UserFacingErrors.text(error) }
+        do {
+            if let snapshot = try bootstrap ?? BundledCatalog.load(), !snapshot.profiles.isEmpty,
+               !state.profiles.contains(where: { $0.source == "vpngate" }) ||
+                Date(timeIntervalSince1970: snapshot.fetchedAt) > (state.feedUpdatedAt ?? .distantPast) {
+                state.profiles = state.profiles.filter { $0.source != "vpngate" } + profiles(snapshot.profiles, source: "vpngate")
+                state.feedUpdatedAt = Date(timeIntervalSince1970: snapshot.fetchedAt)
+                selectedID = state.profiles.first?.id
+                catalogStatus = "Стартовый список: \(snapshot.profiles.count) серверов"
+            }
+        } catch { catalogError = "Не удалось прочитать стартовый список: " + UserFacingErrors.text(error) }
     }
 
     var profiles: [ServerProfile] { state.profiles }
@@ -39,9 +57,15 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private func persist(_ next: SavedState) throws {
-        guard ready, let vault else { throw SeverError.message("Хранилище недоступно") }
-        try vault.save(next)
+    private func persist(_ next: SavedState, allowTransient: Bool = false) throws {
+        do {
+            guard ready, let vault else { throw SeverError.message("Хранилище недоступно") }
+            try vault.save(next)
+            storageWarning = nil
+        } catch {
+            guard allowTransient else { throw error }
+            storageWarning = "Список доступен до закрытия приложения. Сохранение не выполнено: " + UserFacingErrors.text(error)
+        }
         state = next
         if selectedID == nil || !next.profiles.contains(where: { $0.id == selectedID }) { selectedID = next.profiles.first?.id }
     }
@@ -59,17 +83,21 @@ final class AppStore: ObservableObject {
     }
 
     func updateFreeServers() async {
-        guard !busy, let core else { return }; busy = true; defer { busy = false }
+        guard !busy else { return }
+        guard let catalog else { catalogError = "Обработчик каталога недоступен. Перезапустите приложение"; return }
+        busy = true; lastRefreshAttempt = Date(); catalogError = nil
+        defer { busy = false }
         do {
-            let url = URL(string: "https://www.vpngate.net/api/iphone/")!
-            let data = try await HTTPClient.fetch(url)
-            guard let text = String(data: data, encoding: .utf8) else { throw SeverError.message("Каталог вернул неизвестную кодировку") }
-            let seeds: [ProfileSeed] = try core.call("vpnGate", input: text)
+            let result = try await catalog.load { self.catalogStatus = $0 }
             var next = state
-            next.profiles = state.profiles.filter { $0.source != "vpngate" } + profiles(seeds, source: "vpngate")
-            next.feedUpdatedAt = Date()
-            try persist(next)
-        } catch { message = "Не удалось обновить VPN Gate. Сохранённый список оставлен без изменений" }
+            next.profiles = state.profiles.filter { $0.source != "vpngate" } + profiles(result.profiles, source: "vpngate")
+            next.feedUpdatedAt = result.fetchedAt
+            try persist(next, allowTransient: true)
+            catalogStatus = "Получено \(result.profiles.count) серверов · \(result.sourceName.lowercased())"
+        } catch {
+            catalogStatus = profiles.isEmpty ? "Список серверов не получен" : "Доступен сохранённый или стартовый список"
+            catalogError = UserFacingErrors.text(error)
+        }
     }
 
     func addSubscription(_ text: String) async throws {
@@ -89,6 +117,7 @@ final class AppStore: ObservableObject {
     }
 
     func refreshIfNeeded() async {
+        if let lastRefreshAttempt, Date().timeIntervalSince(lastRefreshAttempt) < 60 { return }
         if state.feedUpdatedAt == nil || Date().timeIntervalSince(state.feedUpdatedAt!) > 3600 { await updateFreeServers() }
         for source in state.subscriptions where Date().timeIntervalSince(source.updatedAt) > 3600 {
             do { try await addSubscription(source.url.absoluteString) }
@@ -111,11 +140,11 @@ final class AppStore: ObservableObject {
         for index in next.profiles.indices where candidates.contains(where: { $0.id == next.profiles[index].id }) { next.profiles[index].latency = measured[next.profiles[index].id] }
         if let winner = measured.min(by: { $0.value < $1.value }) { selectedID = winner.key }
         else { message = "Доступные TCP-узлы не найдены. Попробуйте обновить каталог или импортировать профиль" }
-        do { try persist(next) } catch { message = "Не удалось сохранить результаты проверки" }
+        do { try persist(next, allowTransient: true) } catch { message = "Не удалось сохранить результаты проверки" }
     }
 
     func envelope() throws -> TunnelEnvelope {
-        guard let profile = selected, let core else { throw SeverError.message("Сначала добавьте сервер") }
+        guard let profile = selected else { throw SeverError.message(catalogError ?? "Сначала добавьте сервер") }
         let pool: [ServerProfile]
         if profile.engine == .openvpn {
             let rest = profiles.filter { $0.engine == .openvpn && $0.id != profile.id && $0.source == profile.source }
@@ -123,7 +152,11 @@ final class AppStore: ObservableObject {
             pool = [profile] + Array(rest.prefix(2))
         } else { pool = [profile] }
         let candidates = try pool.map { server -> TunnelCandidate in
-            let configuration: String = server.engine == .xray ? try core.call("strictXray", input: server.configuration) : server.configuration
+            let configuration: String
+            if server.engine == .xray {
+                guard let core else { throw SeverError.message("Обработчик Xray недоступен") }
+                configuration = try core.call("strictXray", input: server.configuration)
+            } else { configuration = server.configuration }
             return TunnelCandidate(configuration: configuration,
                                    username: server.source == "vpngate" ? "vpn" : nil,
                                    password: server.source == "vpngate" ? "vpn" : nil)

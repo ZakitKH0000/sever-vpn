@@ -12,13 +12,14 @@ private final class SameHostHTTPSRedirects: NSObject, URLSessionTaskDelegate {
 
 enum HTTPClient {
     static func fetch(_ url: URL, method: String = "GET", body: Data? = nil,
-                      bearer: String? = nil, maximumBytes: Int = 4 * 1024 * 1024) async throws -> Data {
+                      bearer: String? = nil, maximumBytes: Int = 4 * 1024 * 1024,
+                      requestTimeout: TimeInterval = 20, resourceTimeout: TimeInterval = 45) async throws -> Data {
         guard url.scheme == "https", url.host != nil, url.user == nil, url.password == nil else {
             throw SeverError.message("Нужна HTTPS-ссылка без логина и пароля в адресе")
         }
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 45
+        configuration.timeoutIntervalForRequest = requestTimeout
+        configuration.timeoutIntervalForResource = resourceTimeout
         configuration.httpCookieAcceptPolicy = .never
         configuration.httpShouldSetCookies = false
         let delegate = SameHostHTTPSRedirects()
@@ -27,13 +28,12 @@ enum HTTPClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
-        request.setValue("Sever/0.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("Sever/0.1.1", forHTTPHeaderField: "User-Agent")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let bearer { request.setValue("Bearer " + bearer, forHTTPHeaderField: "Authorization") }
         let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw SeverError.message("Источник не вернул данные. Проверьте доступность и срок действия ссылки")
-        }
+        guard let http = response as? HTTPURLResponse else { throw SeverError.message("Источник вернул неизвестный тип ответа") }
+        guard (200...299).contains(http.statusCode) else { throw SeverError.message("Сайт ответил HTTP \(http.statusCode)") }
         if response.expectedContentLength > maximumBytes { throw SeverError.message("Ответ источника слишком большой") }
         var data = Data()
         for try await byte in bytes {

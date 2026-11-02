@@ -9,8 +9,8 @@ settings:
     SWIFT_VERSION: '5.0'
     IPHONEOS_DEPLOYMENT_TARGET: '17.0'
     TARGETED_DEVICE_FAMILY: '1,2'
-    CURRENT_PROJECT_VERSION: '1'
-    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '2'
+    MARKETING_VERSION: '0.1.1'
     CLANG_ENABLE_MODULES: YES
     CLANG_ENABLE_OBJC_ARC: YES
     ENABLE_BITCODE: NO
@@ -64,6 +64,8 @@ targets:
       - sdk: Security.framework
     scheme:
       gatherCoverageData: false
+      testTargets:
+        - SeverTests
   SeverXrayTunnel:
     type: app-extension
     platform: iOS
@@ -132,3 +134,16 @@ targets:
       - sdk: NetworkExtension.framework
       - sdk: Security.framework
       - sdk: SystemConfiguration.framework
+  SeverTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ios/Tests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sever.vpn.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: '$(BUILT_PRODUCTS_DIR)/Sever.app/Sever'
+        BUNDLE_LOADER: '$(TEST_HOST)'
+    dependencies:
+      - target: Sever

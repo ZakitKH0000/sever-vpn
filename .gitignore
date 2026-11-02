@@ -16,3 +16,4 @@ __pycache__/
 node_modules/
 /docs/profile-analysis.md
 /Sever.xcodeproj/
+/ios/Sever/Resources/bootstrap-catalog.json

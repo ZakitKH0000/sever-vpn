@@ -1,7 +1,14 @@
 import Foundation
 import CryptoKit
 
-final class ProfileVault {
+@MainActor
+protocol ProfileStorage {
+    func load() throws -> SavedState
+    func save(_ state: SavedState) throws
+}
+
+@MainActor
+final class ProfileVault: ProfileStorage {
     private let fileURL: URL
     init() throws {
         let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
