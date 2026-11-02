@@ -263,6 +263,8 @@ static NSError *SeverTunnelError(NSString *message) {
         if (!self.stopping && self.adapter == adapter) {
             // Never expose raw adapter messages: they may include configuration or credentials.
             if (!self.lastAttemptError) self.lastAttemptError = SeverTunnelError([NSString stringWithFormat:@"Соединение OpenVPN завершилось с ошибкой адаптера (код %ld)", (long)error.code]);
+            // OpenVPN3 can recover from nonfatal errors itself. Do not abort its handshake/retry.
+            if ([error.userInfo[OpenVPNAdapterErrorFatalKey] isEqual:@NO]) return;
             [self startNextOpenVPN];
         }
     });

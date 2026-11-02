@@ -50,7 +50,7 @@ final class TunnelPluginTests: XCTestCase {
         configuration.connectionTimeout = 25
         configuration.disableClientCert = !profile.configuration.lowercased().contains("<cert>")
         let adapter = OpenVPNAdapter()
-        do { _ = try adapter.applyConfiguration(configuration) }
+        do { _ = try adapter.apply(configuration) }
         catch { XCTFail("Native OpenVPN rejected the public profile; code \((error as NSError).code)") }
         // Configuration validation only: never connect, create a TUN, alter routes or transmit credentials.
     }

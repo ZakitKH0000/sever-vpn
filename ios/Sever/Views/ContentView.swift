@@ -65,7 +65,6 @@ struct HomeView: View {
                                     if vpn.isActive { try await vpn.disconnect() }
                                     else {
                                         if store.selected == nil { await store.updateFreeServers() }
-                                        if store.selected?.source == "vpngate" { await store.chooseFastest() }
                                         try await vpn.connect(envelope: store.envelope(), name: store.selected?.name ?? "Север")
                                     }
                                 } catch let error as SeverError { store.message = error.localizedDescription }
