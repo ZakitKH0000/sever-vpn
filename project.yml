@@ -1,0 +1,134 @@
+name: Sever
+options:
+  bundleIdPrefix: dev.sever
+  deploymentTarget:
+    iOS: '17.0'
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    IPHONEOS_DEPLOYMENT_TARGET: '17.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    CURRENT_PROJECT_VERSION: '1'
+    MARKETING_VERSION: '0.1.0'
+    CLANG_ENABLE_MODULES: YES
+    CLANG_ENABLE_OBJC_ARC: YES
+    ENABLE_BITCODE: NO
+    CODE_SIGN_STYLE: Automatic
+    GENERATE_INFOPLIST_FILE: NO
+packages:
+  XrayBinary:
+    path: Packages/XrayBinary
+  OpenVPNAdapter:
+    url: https://github.com/Windscribe/iOSOpenVPNAdapter.git
+    revision: 5dacd45e47ca9658d11861f760d5d20677c547b6
+targets:
+  Sever:
+    type: application
+    platform: iOS
+    sources:
+      - path: ios/Sever
+        excludes: [Resources, '*.plist', '*.entitlements']
+      - path: ios/Shared
+      - path: ios/Sever/Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sever.vpn
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: Север
+    info:
+      path: ios/Sever/Info.plist
+      properties:
+        CFBundleDisplayName: Север
+        CFBundleShortVersionString: '$(MARKETING_VERSION)'
+        CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+    entitlements:
+      path: ios/Sever/Sever.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        keychain-access-groups: ['$(AppIdentifierPrefix)dev.sever.vpn.shared']
+    dependencies:
+      - target: SeverXrayTunnel
+        embed: true
+      - target: SeverOpenVPNTunnel
+        embed: true
+      - sdk: NetworkExtension.framework
+      - sdk: JavaScriptCore.framework
+      - sdk: Security.framework
+    scheme:
+      gatherCoverageData: false
+  SeverXrayTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ios/Tunnel
+        excludes: ['*.plist', '*.entitlements']
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sever.vpn.XrayTunnel
+        GCC_PREPROCESSOR_DEFINITIONS: '$(inherited) SEVER_XRAY=1'
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        CLANG_CXX_LANGUAGE_STANDARD: gnu++17
+    info:
+      path: ios/Tunnel/Xray-Info.plist
+      properties:
+        CFBundleDisplayName: Север — Xray
+        CFBundleShortVersionString: '$(MARKETING_VERSION)'
+        CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: PacketTunnelProvider
+    entitlements:
+      path: ios/Tunnel/SeverXrayTunnel.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        keychain-access-groups: ['$(AppIdentifierPrefix)dev.sever.vpn.shared']
+    dependencies:
+      - package: XrayBinary
+        product: LibXray
+      - sdk: NetworkExtension.framework
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
+      - sdk: libresolv.tbd
+      - sdk: libz.tbd
+  SeverOpenVPNTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ios/Tunnel
+        excludes: ['*.plist', '*.entitlements']
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sever.vpn.OpenVPNTunnel
+        GCC_PREPROCESSOR_DEFINITIONS: '$(inherited) SEVER_XRAY=0'
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        CLANG_CXX_LANGUAGE_STANDARD: gnu++17
+    info:
+      path: ios/Tunnel/OpenVPN-Info.plist
+      properties:
+        CFBundleDisplayName: Север — OpenVPN
+        CFBundleShortVersionString: '$(MARKETING_VERSION)'
+        CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: PacketTunnelProvider
+    entitlements:
+      path: ios/Tunnel/SeverOpenVPNTunnel.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        keychain-access-groups: ['$(AppIdentifierPrefix)dev.sever.vpn.shared']
+    dependencies:
+      - package: OpenVPNAdapter
+        product: OpenVPNAdapter
+      - sdk: NetworkExtension.framework
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
