@@ -192,10 +192,11 @@ struct DiagnosticsView: View {
                         HStack { Image(systemName: check.ok ? "checkmark.circle.fill" : "exclamationmark.circle").foregroundStyle(check.ok ? SeverStyle.accent : .orange); Text(check.title); Spacer(); Text(check.ok ? "\(check.milliseconds) мс" : "Нет ответа").font(.caption).foregroundStyle(.secondary) }
                     }
                 } footer: { Text("Проверяются только три заранее заданных адреса Cloudflare, Google и Apple. История ваших посещений не собирается. Успех этих проверок не гарантирует доступность каждого сайта.") }
-                Section("Помощник ИИ") {
+                Section {
                     Button { Task { await store.askAI(tunnelStatus: vpn.statusCode) } } label: { Label(store.aiBusy ? "Анализируем…" : "Проанализировать", systemImage: "sparkles") }.disabled(store.aiBusy || store.checks.isEmpty)
                     if !store.explanation.isEmpty { Text(store.explanation).textSelection(.enabled) }
-                } footer: { Text("Только по этой кнопке выбранному ИИ-сервису отправятся результаты проверок. Конфигурации, ключи, адреса серверов и история в отчёт не входят. Советы не применяются автоматически. Используется ваш API-ключ; бесплатность зависит от тарифа сервиса.") }
+                } header: { Text("Помощник ИИ") }
+                  footer: { Text("Только по этой кнопке выбранному ИИ-сервису отправятся результаты проверок. Конфигурации, ключи, адреса серверов и история в отчёт не входят. Советы не применяются автоматически. Используется ваш API-ключ; бесплатность зависит от тарифа сервиса.") }
             }.scrollContentBackground(.hidden).background(SeverStyle.background).navigationTitle("Проверка")
         }
     }
@@ -209,11 +210,12 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("ИИ по желанию") {
+                Section {
                     TextField("HTTPS-адрес API /chat/completions", text: $settings.endpoint).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Название модели", text: $settings.model).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("API-ключ", text: $settings.key).textInputAutocapitalization(.never).autocorrectionDisabled()
-                } footer: { Text("Без ИИ работают импорт, подключение, выбор серверов и проверка связи. Выбирайте API с подходящим бесплатным тарифом. Ключ хранится в Keychain.") }
+                } header: { Text("ИИ по желанию") }
+                  footer: { Text("Без ИИ работают импорт, подключение, выбор серверов и проверка связи. Выбирайте API с подходящим бесплатным тарифом. Ключ хранится в Keychain.") }
                 Section("О приложении") {
                     LabeledContent("Версия", value: "0.1 · первая сборка")
                     Link("Бесплатная сеть VPN Gate", destination: URL(string: "https://www.vpngate.net/en/about_abuse.aspx")!)
